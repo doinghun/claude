@@ -18,12 +18,14 @@ Commands:
   list                List all worktrees
   remove <branch>     Remove a worktree
   clean               Remove all worktrees that no longer exist
+  open <branch>       Open a worktree in new editor window
   help                Show this help message
 
 Examples:
   ./scripts/wt create feature/new-thing
   ./scripts/wt list
   ./scripts/wt remove feature/old-thing
+  ./scripts/wt open feature/new-thing
 EOF
 }
 
@@ -117,6 +119,28 @@ clean_worktrees() {
     echo "✅ Cleanup complete"
 }
 
+open_worktree() {
+    if [ -z "$1" ]; then
+        echo "❌ Branch name required"
+        echo "Usage: ./scripts/wt open <branch-name>"
+        exit 1
+    fi
+
+    BRANCH_NAME="$1"
+    WORKTREE_DIR="$WORKTREE_BASE_DIR/$BRANCH_NAME"
+
+    if [ ! -d "$WORKTREE_DIR" ]; then
+        echo "❌ Worktree not found: $WORKTREE_DIR"
+        echo ""
+        list_worktrees
+        exit 1
+    fi
+
+    echo "📂 Opening worktree: $WORKTREE_DIR"
+    code "$WORKTREE_DIR"
+    echo "✅ Worktree opened in new editor window"
+}
+
 # Main command handler
 case "${1:-help}" in
     create)
@@ -130,6 +154,9 @@ case "${1:-help}" in
         ;;
     clean)
         clean_worktrees
+        ;;
+    open)
+        open_worktree "$2"
         ;;
     help|--help|-h)
         show_help
