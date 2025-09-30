@@ -1,0 +1,5 @@
+{
+    "scripts": {
+        "setup": "pnpm install; cp $WORKTREE_ROOT_PATH/.env .env"
+    }
+}

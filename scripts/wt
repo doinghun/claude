@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# Worktree management script
+# Usage: ./scripts/wt <command> [args]
+
+set -e
+
+WORKTREE_BASE_DIR="./worktrees"
+
+show_help() {
+    cat << EOF
+Worktree Management Tool
+
+Usage: ./scripts/wt <command> [args]
+
+Commands:
+  create <branch>     Create a new worktree with setup
+  list                List all worktrees
+  remove <branch>     Remove a worktree
+  clean               Remove all worktrees that no longer exist
+  help                Show this help message
+
+Examples:
+  ./scripts/wt create feature/new-thing
+  ./scripts/wt list
+  ./scripts/wt remove feature/old-thing
+EOF
+}
+
+create_worktree() {
+    if [ -z "$1" ]; then
+        echo "❌ Branch name required"
+        echo "Usage: ./scripts/wt create <branch-name>"
+        exit 1
+    fi
+
+    # Convert spaces to hyphens in branch name
+    BRANCH_NAME="${1// /-}"
+    WORKTREE_DIR="$WORKTREE_BASE_DIR/$BRANCH_NAME"
+    MAIN_DIR="$(pwd)"
+    SETUP_CONFIG="$MAIN_DIR/scripts/worktree.json"
+
+    echo "📁 Creating worktree for branch: $BRANCH_NAME"
+
+    if [ -d "$WORKTREE_DIR" ]; then
+        echo "❌ Worktree directory already exists: $WORKTREE_DIR"
+        exit 1
+    fi
+
+    # Create worktree
+    git worktree add "$WORKTREE_DIR" -b "$BRANCH_NAME" 2>/dev/null || \
+    git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+
+    echo "✅ Worktree created at: $WORKTREE_DIR"
+
+    # Check if setup config exists and run setup script
+    if [ -f "$SETUP_CONFIG" ]; then
+        echo "📋 Running setup from worktree.json..."
+
+        # Extract setup script from JSON
+        SETUP_SCRIPT=$(python3 -c "import json; print(json.load(open('$SETUP_CONFIG'))['scripts']['setup'])" 2>/dev/null || \
+                      jq -r '.scripts.setup' "$SETUP_CONFIG" 2>/dev/null)
+
+        if [ -n "$SETUP_SCRIPT" ]; then
+            # Run setup in the new worktree with environment variables
+            cd "$WORKTREE_DIR"
+            export WORKTREE_ROOT_PATH="$MAIN_DIR"
+            export WORKTREE_DIR="$WORKTREE_DIR"
+
+            echo "📦 Executing: $SETUP_SCRIPT"
+            bash -c "$SETUP_SCRIPT"
+
+            cd "$MAIN_DIR"
+        else
+            echo "⚠️  No setup script found in config"
+        fi
+    else
+        echo "⚠️  No worktree.json found, skipping setup"
+    fi
+
+    echo ""
+    echo "🎉 Worktree setup complete!"
+    echo "📂 Location: $WORKTREE_DIR"
+    echo "🚀 To start working: cd $WORKTREE_DIR"
+}
+
+list_worktrees() {
+    echo "📋 Current worktrees:"
+    git worktree list
+}
+
+remove_worktree() {
+    if [ -z "$1" ]; then
+        echo "❌ Branch name required"
+        echo "Usage: ./scripts/wt remove <branch-name>"
+        exit 1
+    fi
+
+    BRANCH_NAME="$1"
+    WORKTREE_DIR="$WORKTREE_BASE_DIR/$BRANCH_NAME"
+
+    if [ ! -d "$WORKTREE_DIR" ]; then
+        echo "❌ Worktree not found: $WORKTREE_DIR"
+        echo ""
+        list_worktrees
+        exit 1
+    fi
+
+    echo "🗑️  Removing worktree: $WORKTREE_DIR"
+    git worktree remove "$WORKTREE_DIR"
+    echo "✅ Worktree removed"
+}
+
+clean_worktrees() {
+    echo "🧹 Cleaning up worktrees..."
+    git worktree prune
+    echo "✅ Cleanup complete"
+}
+
+# Main command handler
+case "${1:-help}" in
+    create)
+        create_worktree "$2"
+        ;;
+    list|ls)
+        list_worktrees
+        ;;
+    remove|rm)
+        remove_worktree "$2"
+        ;;
+    clean)
+        clean_worktrees
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo "❌ Unknown command: $1"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
